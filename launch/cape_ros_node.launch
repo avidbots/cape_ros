@@ -1,0 +1,10 @@
+<launch>
+
+  <group ns="$(arg ns)">
+    <arg name="ns"    default=""/>
+    <node name="cape_ros_node" pkg="cape_ros" type="cape_ros_node" output="screen">
+      <remap from="depth_in"  to="/$(arg ns)/depth/image_rect_raw"/>
+      <remap from="ir_in"     to="/$(arg ns)/infra1/image_rect_raw"/>
+    </node>
+  </group>
+</launch>
