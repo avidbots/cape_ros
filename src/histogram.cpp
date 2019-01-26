@@ -33,7 +33,6 @@ void Histogram::initHistogram(Eigen::MatrixXd& P, vector<bool>& Flags) {
         Y_q = 0;
       }
       int bin = Y_q * nr_bins_per_coord + X_q;
-      std::cout << "bin " << bin << std::endl;
       B[i] = bin;
       H[bin]++;
     }

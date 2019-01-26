@@ -393,7 +393,6 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
     }
   }
 
-  std::cout << "Done initial segmentation " << std::endl;
   /*------------------------- Copying and rearranging segment data ------------------------*/
   uchar *row_ptr, *stack_ptr;
   uchar *grid_plane_eroded_row_ptr, *grid_cylinder_eroded_row_ptr;

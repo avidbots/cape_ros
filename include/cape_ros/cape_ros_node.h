@@ -19,11 +19,11 @@ public:
 
   void organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::MatrixXf& cloud_out, cv::Mat& cell_map);
 
-  void drawResult(const cv::Mat& img, const cv::Mat &seg, const double& time_elapsed);
+  void overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat &seg);
 
   void depthCallback(const sensor_msgs::ImagePtr &image);
 
-  cape_ros::PlanesConstPtr generateMessage() const;
+  cape_ros::PlanesConstPtr generateMessage(const std_msgs::Header &header) const;
 
   void reset();
 
@@ -34,6 +34,7 @@ private:
   ros::Subscriber depth_sub;
   ros::Subscriber intensity_sub;
   ros::Publisher planes_pub_;
+  ros::Publisher image_overlay_pub_;
   ros::NodeHandle nh_;
 
   const double DEPTH_SCALE_METERS = 0.001;
@@ -45,11 +46,8 @@ private:
   bool cylinder_detection_ ;
 
   int patch_size_;
-  uint32_t width_;
-  uint32_t height_;
-
-  int nr_horizontal_cells ;
-  int nr_vertical_cells ;
+  int width_;
+  int height_;
 
   cv::Mat depth_mat;
   cv::Mat X;
@@ -63,11 +61,10 @@ private:
 
   cv::Mat X_pre;
   cv::Mat Y_pre;
-  cv::Mat U;
-  cv::Mat V;
   cv::Mat cell_map;
   cv::Mat seg_rz;
   cv::Mat seg_output;
+  cv::Mat overlay_image;
   cv_bridge::CvImageConstPtr intensity_image_ptr_;
 
   std::shared_ptr<Cape> cape_extractor_;

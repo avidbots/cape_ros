@@ -10,6 +10,47 @@
 #include <opencv2/opencv.hpp>
 #include <cape_ros/cape_ros_node.h>
 
+
+std::array<uint8_t, 3> hsvToRgb(const double h, const double s, const double v)
+{
+  const auto c = v * s;
+  const auto h_prime = fmod(h / 60.0, 6);
+  const auto x = c * (1 - std::abs(fmod(h_prime, 2) - 1));
+  const auto m = v - c;
+
+  const auto v1 = static_cast<uint8_t>(255 * (c + m));
+  const auto v2 = static_cast<uint8_t>(255 * (x + m));
+  const auto v3 = static_cast<uint8_t>(255 * m);
+
+  if (h_prime < 1)
+  {
+    return {v1, v2, v3};
+  }
+  if (h_prime < 2)
+  {
+    return {v2, v1, v3};
+  }
+  if (h_prime < 3)
+  {
+    return {v3, v1, v2};
+  }
+  if (h_prime < 4)
+  {
+    return {v3, v2, v1};
+  }
+  if (h_prime < 5)
+  {
+    return {v2, v3, v1};
+  }
+  if (h_prime < 6)
+  {
+    return {v1, v3, v2};
+  }
+
+  return {v3, v3, v3};
+}
+
+
 CapeRosNode::CapeRosNode(ros::NodeHandle nh)
       : nh_(nh)
       , cos_angle_max_(std::cos(M_PI/30))
@@ -21,6 +62,7 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
         depth_sub = nh.subscribe("depth_in", 2, &CapeRosNode::depthCallback, this);
         intensity_sub = nh.subscribe("ir_in", 2, &CapeRosNode::intensityCallback, this);
         planes_pub_ = nh.advertise<cape_ros::Planes>("planes", 1);
+        image_overlay_pub_ = nh.advertise<sensor_msgs::Image>("overlay_image", 1);
     }
 
     void CapeRosNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array, const double& depth_cutoff) {
@@ -64,82 +106,45 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
       }
     }
 
-    void CapeRosNode::drawResult(const cv::Mat& img, const cv::Mat& seg, const double& time_elapsed) {
-      // Populate with random color codes
-      std::vector<cv::Vec3b> color_code;
-      for (int i = 0; i < 100; i++) {
-        cv::Vec3b color;
-        color[0] = rand() % 255;
-        color[1] = rand() % 255;
-        color[2] = rand() % 255;
-        color_code.push_back(color);
+    void CapeRosNode::overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat& seg)
+    {
+      std::vector<std::array<uint8_t, 3>> colors;
+      colors.reserve(plane_params.size());
+
+      const int hue_step = 360 / (plane_params.size() - 1);
+      const double saturation = 0.9;
+      const double value = 0.8;
+      for (auto i = 0; i < plane_params.size(); ++i)
+      {
+        colors.emplace_back(hsvToRgb(static_cast<double>(i * hue_step), saturation, value));
       }
 
-      // Add specific colors for planes
-      color_code[0][0] = 0;
-      color_code[0][1] = 0;
-      color_code[0][2] = 255;
-      color_code[1][0] = 255;
-      color_code[1][1] = 0;
-      color_code[1][2] = 204;
-      color_code[2][0] = 255;
-      color_code[2][1] = 100;
-      color_code[2][2] = 0;
-      color_code[3][0] = 0;
-      color_code[3][1] = 153;
-      color_code[3][2] = 255;
-      // Add specific colors for cylinders
-      color_code[50][0] = 178;
-      color_code[50][1] = 255;
-      color_code[50][2] = 0;
-      color_code[51][0] = 255;
-      color_code[51][1] = 0;
-      color_code[51][2] = 51;
-      color_code[52][0] = 0;
-      color_code[52][1] = 255;
-      color_code[52][2] = 51;
-      color_code[53][0] = 153;
-      color_code[53][1] = 0;
-      color_code[53][2] = 255;
+      overlay_image.create(height_, width_, CV_8UC3);
 
-      int width = img.cols;
-      int height = img.rows;
+      for (int r = 0; r < height_; ++r)
+      {
+        for (int c = 0; c < width_; ++c)
+        {
+          auto& overlay_color = overlay_image.at<cv::Vec3b>(r, c);
+          const auto seg_code = seg.at<uint8_t>(r, c);
+          const auto intensity = img.at<uint8_t>(r, c);
 
-      cv::Mat_<cv::Vec3b> seg_rz = cv::Mat_<cv::Vec3b>(img.rows, img.cols, cv::Vec3b(0, 0, 0));
-      // Map segments with color codes and overlap segmented image w/ RGB
-      uchar* dColor;
-      int code;
-      for (int r = 0; r < height; r++) {
-        dColor = seg_rz.ptr<uchar>(r);
-        const auto * sCode = seg.ptr<uchar>(r);
-        const uchar* sir = img.ptr<uchar>(r);
-        for (int c = 0; c < width; c++) {
-          code = *sCode;
-          if (code > 0) {
-            dColor[c * 3] = color_code[code - 1][0] / 2 + sir[0] / 2;
-            dColor[c * 3 + 1] = color_code[code - 1][1] / 2 + sir[0] / 2;
-            dColor[c * 3 + 2] = color_code[code - 1][2] / 2 + sir[0] / 2;
-          } else {
-            dColor[c * 3] = sir[0];
-            dColor[c * 3 + 1] = sir[0];
-            dColor[c * 3 + 2] = sir[0];
+          if (seg_code)
+          {
+            const auto color = colors[seg_code - 1];
+            overlay_color[0] = (intensity + color[0]) >> 1;
+            overlay_color[1] = (intensity + color[1]) >> 1;
+            overlay_color[2] = (intensity + color[2]) >> 1;
           }
-          sCode++;
-          sir++;
+          else
+          {
+            overlay_color[0] = overlay_color[1] = overlay_color[2] = intensity;
+          }
         }
       }
-
-      // Show frame rate and labels
-      cv::rectangle(seg_rz, cv::Point(0, 0), cv::Point(width, 20), cv::Scalar(0, 0, 0), -1);
-      std::stringstream fps;
-      fps << (int)(1 / time_elapsed + 0.5) << " fps";
-      cv::putText(seg_rz, fps.str(), cv::Point(15, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255, 1));
-
-      cv::imshow("plane_extractor", seg_rz);
-      cv::waitKey(15);
     }
 
-    cape_ros::PlanesConstPtr CapeRosNode::generateMessage() const
+    cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& header) const
     {
        cape_ros::PlanesPtr planes = boost::make_shared<cape_ros::Planes>();
        for (const PlaneSeg& plane : plane_params)
@@ -150,16 +155,16 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
          p.coef[2] = plane.normal[2];
          p.coef[3] = plane.d;
          planes->planes.push_back(p);
-         cv_bridge::CvImage Im(std_msgs::Header(), "mono8", seg_output);
-         planes->segments = *Im.toImageMsg();
+
+         planes->segments = *cv_bridge::CvImage(header, "mono8", seg_output).toImageMsg();
        }
 
        return planes;
 
     }
 
-    void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr &image) {
-      ROS_DEBUG("DepthCallback");
+    void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr &image)
+    {
       if (!intrinsics_ready) {
         try {
           sensor_msgs::CameraInfoConstPtr cam_intrinsics_info =
@@ -194,8 +199,6 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
         reset();
       }
 
-
-      depth_mat.create(height_, width_, CV_32F);
       auto iter_mat = depth_mat.begin<float>();
 
       // Go through the depth iamge and scale each pixel
@@ -214,153 +217,72 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
         }
       }
 
-      ROS_WARN_STREAM("DONE MAPPING DEPTH");
-
-      // cv::imshow("depth", depth_img);
-      // cv::waitKey(10);
-
-      // Backproject to point cloud
       X = X_pre.mul(depth_mat);
       Y = Y_pre.mul(depth_mat);
       cloud_array.setZero();
-
-      // The following transformation+projection is only necessary to visualize RGB with overlapped segments
-      // Transform point cloud to color reference frame
-      // X_t = ((float)R_stereo.at<double>(0,0))*X+((float)R_stereo.at<double>(0,1))*Y+((float)R_stereo.at<double>(0,2))*d_img +
-      // (float)t_stereo.at<double>(0);
-      // Y_t = ((float)R_stereo.at<double>(1,0))*X+((float)R_stereo.at<double>(1,1))*Y+((float)R_stereo.at<double>(1,2))*d_img +
-      // (float)t_stereo.at<double>(1);
-      // d_img = ((float)R_stereo.at<double>(2,0))*X+((float)R_stereo.at<double>(2,1))*Y+((float)R_stereo.at<double>(2,2))*d_img +
-      // (float)t_stereo.at<double>(2);
-      // projectPointCloud(X_t, Y_t, d_img, U, V, fx_rgb, fy_rgb, cx_rgb, cy_rgb, t_stereo.at<double>(2), cloud_array);
-
-      simpleProjectPointCloud(X, Y, depth_mat, cloud_array, depth_cutoff_);
-      ROS_WARN_STREAM("Simple Projected");
-
-      seg_rz.setTo(0);
       seg_output.setTo(0);
-
-      // Run CAPE
       plane_params.clear();
       cylinder_params.clear();
 
-      double t1 = cv::getTickCount();
+      simpleProjectPointCloud(X, Y, depth_mat, cloud_array, depth_cutoff_);
+
       organizePointCloudByCell(cloud_array, cloud_array_organized, cell_map);
 
       cape_extractor_->process(cloud_array_organized, seg_output, plane_params, cylinder_params);
 
-      double t2 = cv::getTickCount();
-      double time_elapsed = (t2 - t1) / (double)cv::getTickFrequency();
-      cout << "CAPE initial time elapsed: " << time_elapsed << endl;
+      planes_pub_.publish(generateMessage(image->header));
 
-      // t1 = cv::getTickCount();
-      //// hough lines on seg
-      // cv::Mat_<uchar> seg_binary = cv::Mat_<uchar>(height, width, uchar(0));
-      // cv::threshold(seg_output, seg_binary, 0, 255, 0);
-      // cv::Mat_<uchar> seg_edge;
-      // cv::Canny(seg_binary, seg_edge, 50, 200, 3);
-
-      // std::vector<cv::Vec4i> lines;
-      // cv::Mat seg_edge_lines;
-      // cv::cvtColor(seg_edge, seg_edge_lines, CV_GRAY2BGR);
-      //// cv::HoughLinesP(seg_edge, lines, 1, CV_PI/180, 50, 50, 10);
-      // cv::HoughLinesP(seg_edge, lines, 1, CV_PI / 180, 50, 50, 50);
-
-      // t2 = cv::getTickCount();
-      // time_elapsed = (t2 - t1) / (double)cv::getTickFrequency();
-      // cout << "Canny+HoughLinesP time elapsed: " << time_elapsed << endl;
-
-      // for (size_t i = 0; i < lines.size(); i++) {
-      //  cv::Vec4i l = lines[i];
-      //  cv::line(seg_edge_lines, cv::Point(l[0], l[1]), cv::Point(l[2], l[3]), cv::Scalar(0, 0, 255), 3, CV_AA);
-      //}
-
-      // cv::imshow("seg_edge", seg_edge);
-      // cv::imshow("seg_binary", seg_binary);
-      // cv::imshow("detected lines", seg_edge_lines);
-      // cv::waitKey(10);
-
-      /* Uncomment this block to print model params */
-      for (int p_id = 0; p_id < plane_params.size(); p_id++) {
-        cout << "[Plane #" << p_id << "] with ";
-        cout << "normal: (" << plane_params[p_id].normal[0] << " " << plane_params[p_id].normal[1] << " " << plane_params[p_id].normal[2] << "), ";
-        cout << "mean: (" << plane_params[p_id].mean[0] << " " << plane_params[p_id].mean[1] << " " << plane_params[p_id].mean[2] << "), ";
-        cout << "score: " << plane_params[p_id].score << ", ";
-        cout << "d: " << plane_params[p_id].d << endl;
-      }
-
-      for (int c_id = 0; c_id < cylinder_params.size(); c_id++) {
-        cout << "[Cylinder #" << c_id << "] with ";
-        cout << "axis: (" << cylinder_params[c_id].axis[0] << " " << cylinder_params[c_id].axis[1] << " " << cylinder_params[c_id].axis[2] << "), ";
-        cout << "center: (" << cylinder_params[c_id].centers[0].transpose() << "), ";
-        cout << "radius: " << cylinder_params[c_id].radii[0] << endl;
-      }
-
-      planes_pub_.publish(generateMessage());
-
-      //planes_.plane_mask = seg_output.clone();
-      //planes_.plane_array.clear();
-      /*for (std::size_t i = 0; i < plane_params.size(); ++i) {
-        const PlaneSeg& pl = plane_params[i];
-        Plane plane(i + 1, pl.mean[0], pl.mean[1], pl.mean[2], pl.normal[0], pl.normal[1], pl.normal[2]);
-        planes_.plane_array.push_back(plane);
-      }*/
-      std::cout << "Done all " << std::endl;
-      if (intensity_image_ptr_)
+      if (intensity_image_ptr_ && (image_overlay_pub_.getNumSubscribers() > 0))
       {
-        drawResult(intensity_image_ptr_->image, seg_output, time_elapsed);
+        overlaySegmentsOnImage(intensity_image_ptr_->image, seg_output);
+        image_overlay_pub_.publish(cv_bridge::CvImage(image->header, "rgb8", overlay_image).toImageMsg());
       }
-      else
-{
-  std::cout << " Intensity image not initialized " << std::endl;
-}
 
     }
 
     void CapeRosNode::reset()
     {
-        ROS_WARN_STREAM("RESETTING");
-        nr_horizontal_cells = width_ / patch_size_;
-        nr_vertical_cells = height_ / patch_size_;
+      cape_extractor_ = std::make_shared<Cape>(height_, width_, patch_size_, patch_size_, cylinder_detection_, cos_angle_max_, max_merge_dist_);
+      depth_mat.create(height_, width_, CV_32F);
+      X.create(height_, width_, CV_32F);
+      Y.create(height_, width_, CV_32F);
+      X_pre.create(height_, width_, CV_32F);
+      Y_pre.create(height_, width_, CV_32F);
 
-        cape_extractor_ = std::make_shared<Cape>(height_, width_, patch_size_, patch_size_, cylinder_detection_, cos_angle_max_, max_merge_dist_);
-        X.create(height_, width_, CV_32F);
-        Y.create(height_, width_, CV_32F);
-        X_pre.create(height_, width_, CV_32F);
-        Y_pre.create(height_, width_, CV_32F);
-        //U.create(height_, width_, CV_32F);
-        //V.create(height_, width_, CV_32F);
+      cloud_array.resize(width_ * height_, 3);
+      cloud_array_organized.resize(width_ * height_, 3);
 
-        cloud_array.resize(width_ * height_, 3);
-        cloud_array_organized.resize(width_ * height_, 3);
-
-        for (int r = 0; r < height_; r++) {
-          for (int c = 0; c < width_; c++) {
-            X_pre.at<float>(r, c) = (c - cx) / fx;
-            Y_pre.at<float>(r, c) = (r - cy) / fy;
-          }
+      for (auto r = 0; r < height_; ++r)
+      {
+        for (auto c = 0; c < width_; ++c)
+        {
+          X_pre.at<float>(r, c) = static_cast<float>((c - cx) / fx);
+          Y_pre.at<float>(r, c) = static_cast<float>((r - cy) / fy);
         }
+      }
 
-        // Pre-computations for maping an image point cloud to a cache-friendly array where cell's local point clouds are contiguous
-        cell_map.create(height_, width_, CV_32S);
+      // Pre-computations for maping an image point cloud to a cache-friendly array where cell's local point clouds are contiguous
+      cell_map.create(height_, width_, CV_32S);
 
-        for (int r = 0; r < height_; r++) {
-          int cell_r = r / patch_size_;
-          int local_r = r % patch_size_;
-          for (int c = 0; c < width_; c++) {
-            int cell_c = c / patch_size_;
-            int local_c = c % patch_size_;
-            cell_map.at<int>(r, c) = (cell_r * nr_horizontal_cells + cell_c) * patch_size_ * patch_size_ + local_r * patch_size_ + local_c;
-          }
+      const auto nr_horizontal_cells = width_ / patch_size_;
+      ///@todo(afakih) join this with the loop above
+      for (int r = 0; r < height_; ++r)
+      {
+        int cell_r = r / patch_size_;
+        int local_r = r % patch_size_;
+        for (int c = 0; c < width_; ++c)
+        {
+          int cell_c = c / patch_size_;
+          int local_c = c % patch_size_;
+          cell_map.at<int>(r, c) = (cell_r * nr_horizontal_cells + cell_c) * patch_size_ * patch_size_ + local_r * patch_size_ + local_c;
         }
+      }
 
-        seg_rz.create(height_, width_, CV_8UC3);
-        seg_output.create(height_, width_, CV_8U);
-        ROS_WARN_STREAM("RESETTED");
+      seg_output.create(height_, width_, CV_8U);
     }
 
-    void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr &image) {
-      ROS_DEBUG("IRCallback");
+    void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr &image)
+    {
       intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
     }
 
