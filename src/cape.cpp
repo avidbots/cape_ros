@@ -46,7 +46,7 @@ Cape::Cape(int depth_height, int depth_width, int cell_width, int cell_height, b
   mask_cross_kernel.at<uchar>(2, 0) = 0;
 }
 
-void Cape::process(Eigen::MatrixXf& cloud_array, int& nr_planes_final, int& nr_cylinders_final, cv::Mat& seg_out,
+void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
                    std::vector<PlaneSeg>& plane_segments_final, std::vector<CylinderSeg>& cylinder_segments_final) {
 
   std::cout << " depth_width " << depth_width << " " << depth_height << " " << cell_width <<" " << cell_height << std::endl;
@@ -321,10 +321,9 @@ void Cape::process(Eigen::MatrixXf& cloud_array, int& nr_planes_final, int& nr_c
       }
     }
   }
-  nr_planes_final = plane_segments_final.size();
 
   /*------------------------------ Refine cylinder boundaries -----------------------------*/
-  nr_cylinders_final = 0;
+  auto nr_cylinders_final = 0;
   if (cylinder_detection) {
     Eigen::Vector3f point;
     float dist;

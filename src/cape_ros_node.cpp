@@ -10,7 +10,7 @@
 #include <opencv2/opencv.hpp>
 #include <cape_ros/cape_ros_node.h>
 
-PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
+CapeRosNode::CapeRosNode(ros::NodeHandle nh)
       : nh_(nh)
       , cos_angle_max_(std::cos(M_PI/30))
       , max_merge_dist_(50.0)
@@ -18,12 +18,12 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       , cylinder_detection_(false)
       , patch_size_(20)
     {
-        depth_sub = nh.subscribe("depth_in", 2, &PlaneExtractionNode::depthCallback, this);
-        intensity_sub = nh.subscribe("ir_in", 2, &PlaneExtractionNode::intensityCallback, this);
+        depth_sub = nh.subscribe("depth_in", 2, &CapeRosNode::depthCallback, this);
+        intensity_sub = nh.subscribe("ir_in", 2, &CapeRosNode::intensityCallback, this);
         planes_pub_ = nh.advertise<cape_ros::Planes>("planes", 1);
     }
 
-    void PlaneExtractionNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array, const double& depth_cutoff) {
+    void CapeRosNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array, const double& depth_cutoff) {
       int width = X.cols;
       int height = X.rows;
 
@@ -44,7 +44,7 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       }
     }
 
-    void PlaneExtractionNode::organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::MatrixXf& cloud_out, cv::Mat& cell_map) {
+    void CapeRosNode::organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::MatrixXf& cloud_out, cv::Mat& cell_map) {
       int width = cell_map.cols;
       int height = cell_map.rows;
       int mxn = width * height;
@@ -64,7 +64,7 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       }
     }
 
-    void PlaneExtractionNode::drawResult(const cv::Mat& ir_img, cv::Mat& seg, const double& time_elapsed) {
+    void CapeRosNode::drawResult(const cv::Mat& img, const cv::Mat& seg, const double& time_elapsed) {
       // Populate with random color codes
       std::vector<cv::Vec3b> color_code;
       for (int i = 0; i < 100; i++) {
@@ -102,18 +102,17 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       color_code[53][1] = 0;
       color_code[53][2] = 255;
 
-      int width = ir_img.cols;
-      int height = ir_img.rows;
-      std::cout << "IR_IMAGE " << std::endl;
-      cv::Mat_<cv::Vec3b> seg_rz = cv::Mat_<cv::Vec3b>(ir_img.rows, ir_img.cols, cv::Vec3b(0, 0, 0));
+      int width = img.cols;
+      int height = img.rows;
+
+      cv::Mat_<cv::Vec3b> seg_rz = cv::Mat_<cv::Vec3b>(img.rows, img.cols, cv::Vec3b(0, 0, 0));
       // Map segments with color codes and overlap segmented image w/ RGB
-      uchar* sCode;
       uchar* dColor;
       int code;
       for (int r = 0; r < height; r++) {
         dColor = seg_rz.ptr<uchar>(r);
-        sCode = seg.ptr<uchar>(r);
-        const uchar* sir = ir_img.ptr<uchar>(r);
+        const auto * sCode = seg.ptr<uchar>(r);
+        const uchar* sir = img.ptr<uchar>(r);
         for (int c = 0; c < width; c++) {
           code = *sCode;
           if (code > 0) {
@@ -140,7 +139,26 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       cv::waitKey(15);
     }
 
-    void PlaneExtractionNode::depthCallback(const sensor_msgs::ImagePtr &image) {
+    cape_ros::PlanesConstPtr CapeRosNode::generateMessage() const
+    {
+       cape_ros::PlanesPtr planes = boost::make_shared<cape_ros::Planes>();
+       for (const PlaneSeg& plane : plane_params)
+       {
+         shape_msgs::Plane p;
+         p.coef[0] = plane.normal[0];
+         p.coef[1] = plane.normal[1];
+         p.coef[2] = plane.normal[2];
+         p.coef[3] = plane.d;
+         planes->planes.push_back(p);
+         cv_bridge::CvImage Im(std_msgs::Header(), "mono8", seg_output);
+         planes->segments = *Im.toImageMsg();
+       }
+
+       return planes;
+
+    }
+
+    void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr &image) {
       ROS_DEBUG("DepthCallback");
       if (!intrinsics_ready) {
         try {
@@ -223,15 +241,14 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       seg_output.setTo(0);
 
       // Run CAPE
-      int nr_planes, nr_cylinders;
-      vector<PlaneSeg> plane_params;
-      vector<CylinderSeg> cylinder_params;
+      plane_params.clear();
+      cylinder_params.clear();
 
       double t1 = cv::getTickCount();
       organizePointCloudByCell(cloud_array, cloud_array_organized, cell_map);
-      ROS_WARN_STREAM("ORGANIZED");
-      cape_extractor_->process(cloud_array_organized, nr_planes, nr_cylinders, seg_output, plane_params, cylinder_params);
-      ROS_WARN_STREAM("PROCESSED");
+
+      cape_extractor_->process(cloud_array_organized, seg_output, plane_params, cylinder_params);
+
       double t2 = cv::getTickCount();
       double time_elapsed = (t2 - t1) / (double)cv::getTickFrequency();
       cout << "CAPE initial time elapsed: " << time_elapsed << endl;
@@ -264,7 +281,7 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
       // cv::waitKey(10);
 
       /* Uncomment this block to print model params */
-      for (int p_id = 0; p_id < nr_planes; p_id++) {
+      for (int p_id = 0; p_id < plane_params.size(); p_id++) {
         cout << "[Plane #" << p_id << "] with ";
         cout << "normal: (" << plane_params[p_id].normal[0] << " " << plane_params[p_id].normal[1] << " " << plane_params[p_id].normal[2] << "), ";
         cout << "mean: (" << plane_params[p_id].mean[0] << " " << plane_params[p_id].mean[1] << " " << plane_params[p_id].mean[2] << "), ";
@@ -272,12 +289,14 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
         cout << "d: " << plane_params[p_id].d << endl;
       }
 
-      for (int c_id = 0; c_id < nr_cylinders; c_id++) {
+      for (int c_id = 0; c_id < cylinder_params.size(); c_id++) {
         cout << "[Cylinder #" << c_id << "] with ";
         cout << "axis: (" << cylinder_params[c_id].axis[0] << " " << cylinder_params[c_id].axis[1] << " " << cylinder_params[c_id].axis[2] << "), ";
         cout << "center: (" << cylinder_params[c_id].centers[0].transpose() << "), ";
         cout << "radius: " << cylinder_params[c_id].radii[0] << endl;
       }
+
+      planes_pub_.publish(generateMessage());
 
       //planes_.plane_mask = seg_output.clone();
       //planes_.plane_array.clear();
@@ -298,7 +317,7 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
 
     }
 
-    void PlaneExtractionNode::reset()
+    void CapeRosNode::reset()
     {
         ROS_WARN_STREAM("RESETTING");
         nr_horizontal_cells = width_ / patch_size_;
@@ -309,8 +328,8 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
         Y.create(height_, width_, CV_32F);
         X_pre.create(height_, width_, CV_32F);
         Y_pre.create(height_, width_, CV_32F);
-        U.create(height_, width_, CV_32F);
-        V.create(height_, width_, CV_32F);
+        //U.create(height_, width_, CV_32F);
+        //V.create(height_, width_, CV_32F);
 
         cloud_array.resize(width_ * height_, 3);
         cloud_array_organized.resize(width_ * height_, 3);
@@ -340,7 +359,7 @@ PlaneExtractionNode::PlaneExtractionNode(ros::NodeHandle nh)
         ROS_WARN_STREAM("RESETTED");
     }
 
-    void PlaneExtractionNode::intensityCallback(const sensor_msgs::ImagePtr &image) {
+    void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr &image) {
       ROS_DEBUG("IRCallback");
       intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
     }
@@ -354,7 +373,7 @@ int main(int argc, char **argv) {
   ros::init(argc, argv, "ros_cape_node");
 
   ros::NodeHandle nh;
-  PlaneExtractionNode node(nh);
+  CapeRosNode node(nh);
   ros::spin();
   return 0;
 }
