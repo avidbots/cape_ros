@@ -1,5 +1,22 @@
 /*
+ * This file is part of the cape_ros.
+ * Copyright (c) 2019 Avidbots Corp.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
+
+#ifndef CAPE_ROS_CAPE_ROS_NODE_H
+#define CAPE_ROS_CAPE_ROS_NODE_H
 
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -9,63 +26,63 @@
 #include <cape_ros/cape.h>
 #include <opencv2/opencv.hpp>
 
-
-class CapeRosNode {
-
+class CapeRosNode
+{
 public:
   CapeRosNode(ros::NodeHandle nh);
 
-  void simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array, const double& depth_cutoff);
+  void simpleProjectPointCloud(cv::Mat& X_, cv::Mat& Y_, cv::Mat& Z, Eigen::MatrixXf& cloud_array_,
+                               const double& depth_cutoff);
 
-  void organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::MatrixXf& cloud_out, cv::Mat& cell_map);
+  void organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::MatrixXf& cloud_out, cv::Mat& cell_map_);
 
-  void overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat &seg);
+  void overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat& seg);
 
-  void depthCallback(const sensor_msgs::ImagePtr &image);
+  void depthCallback(const sensor_msgs::ImagePtr& image);
 
-  cape_ros::PlanesConstPtr generateMessage(const std_msgs::Header &header) const;
+  cape_ros::PlanesConstPtr generateMessage(const std_msgs::Header& header) const;
 
   void reset();
 
-  void intensityCallback(const sensor_msgs::ImagePtr &image);
+  void intensityCallback(const sensor_msgs::ImagePtr& image);
 
 private:
-
   ros::Subscriber depth_sub;
   ros::Subscriber intensity_sub;
   ros::Publisher planes_pub_;
   ros::Publisher image_overlay_pub_;
   ros::NodeHandle nh_;
 
-  const double DEPTH_SCALE_METERS = 0.001;
-  bool intrinsics_ready = false;
-  double fx, fy, cx, cy;
+  const double depth_scale_ = 0.001;
+  bool intrinsics_ready_ = false;
+  double fx_, fy_, cx_, cy_;
   double cos_angle_max_;
   double max_merge_dist_;
   double depth_cutoff_;
-  bool cylinder_detection_ ;
+  bool cylinder_detection_;
 
   int patch_size_;
   int width_;
   int height_;
 
-  cv::Mat depth_mat;
-  cv::Mat X;
-  cv::Mat Y;
-  Eigen::MatrixXf cloud_array;
-  Eigen::MatrixXf cloud_array_organized;
+  cv::Mat depth_mat_;
+  cv::Mat X_;
+  cv::Mat Y_;
+  Eigen::MatrixXf cloud_array_;
+  Eigen::MatrixXf cloud_array_organized_;
 
-  vector<PlaneSeg> plane_params;
-  vector<CylinderSeg> cylinder_params;
+  vector<PlaneSeg> plane_params_;
+  vector<CylinderSeg> cylinder_params_;
 
-
-  cv::Mat X_pre;
-  cv::Mat Y_pre;
-  cv::Mat cell_map;
-  cv::Mat seg_rz;
-  cv::Mat seg_output;
-  cv::Mat overlay_image;
+  cv::Mat X_pre_;
+  cv::Mat Y_pre_;
+  cv::Mat cell_map_;
+  cv::Mat seg_rz_;
+  cv::Mat seg_output_;
+  cv::Mat overlay_image_;
   cv_bridge::CvImageConstPtr intensity_image_ptr_;
 
   std::shared_ptr<Cape> cape_extractor_;
 };
+
+#endif // #ifndef CAPE_ROS_CAPE_ROS_NODE_H
