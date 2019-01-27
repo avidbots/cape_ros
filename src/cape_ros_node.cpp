@@ -162,6 +162,12 @@ cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& he
     p.coef[3] = plane.d;
     planes->planes.push_back(p);
 
+    geometry_msgs::Point m;
+    m.x = plane.mean[0];
+    m.y = plane.mean[1];
+    m.z = plane.mean[2];
+    planes->means.push_back(m);
+
     planes->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
   }
 
