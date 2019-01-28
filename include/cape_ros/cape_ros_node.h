@@ -47,11 +47,11 @@ public:
   void intensityCallback(const sensor_msgs::ImagePtr& image);
 
 private:
+  ros::NodeHandle nh_;
   ros::Subscriber depth_sub;
   ros::Subscriber intensity_sub;
   ros::Publisher planes_pub_;
   ros::Publisher image_overlay_pub_;
-  ros::NodeHandle nh_;
 
   const double depth_scale_ = 0.001;
   bool intrinsics_ready_ = false;

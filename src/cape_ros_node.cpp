@@ -61,6 +61,15 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
   intensity_sub = nh.subscribe("ir_in", 2, &CapeRosNode::intensityCallback, this);
   planes_pub_ = nh.advertise<cape_ros::Planes>("planes", 1);
   image_overlay_pub_ = nh.advertise<sensor_msgs::Image>("overlay_image", 1);
+
+  constexpr auto deg_to_rad = M_PI / 180;
+
+  auto max_angle = 6.0; // degrees
+  nh_.param("max_angle", max_angle, max_angle);
+  cos_angle_max_ = std::cos(max_angle * deg_to_rad);
+  nh_.param("max_merge_distance", max_merge_dist_, max_merge_dist_);
+  nh_.param("patch_size", patch_size_, patch_size_);
+  nh_.param("depth_cuttoff", depth_cutoff_, depth_cutoff_);
 }
 
 void CapeRosNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array,
