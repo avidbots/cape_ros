@@ -65,11 +65,11 @@ std::array<uint8_t, 3> hsvToRgb(const double h, const double s, const double v)
 
 CapeRosNode::CapeRosNode(ros::NodeHandle nh)
   : nh_(nh)
-  , cos_angle_max_(std::cos(M_PI / 30))
+  , cos_angle_max_(std::cos(M_PI / 45))
   , max_merge_dist_(50.0)
   , depth_cutoff_(5.0)
   , cylinder_detection_(false)
-  , patch_size_(20)
+  , patch_size_(24)
 {
   depth_sub_ = nh.subscribe("depth_in", 2, &CapeRosNode::depthCallback, this);
   intensity_sub_ = nh.subscribe("ir_in", 2, &CapeRosNode::intensityCallback, this);
@@ -78,12 +78,17 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
 
   constexpr auto deg_to_rad = M_PI / 180;
 
-  auto max_angle = 6.0; // degrees
+  auto max_angle = 4.0; // degrees
   nh_.param("max_angle", max_angle, max_angle);
   cos_angle_max_ = std::cos(max_angle * deg_to_rad);
-  nh_.param("max_merge_distance", max_merge_dist_, max_merge_dist_);
+  nh_.param("max_merge_dist", max_merge_dist_, max_merge_dist_);
   nh_.param("patch_size", patch_size_, patch_size_);
-  nh_.param("depth_cuttoff", depth_cutoff_, depth_cutoff_);
+  nh_.param("depth_cutoff", depth_cutoff_, depth_cutoff_);
+
+  ROS_INFO("cape::max_angle: %f", max_angle);
+  ROS_INFO("cape::max_merge_dist: %f", max_merge_dist_);
+  ROS_INFO("cape::patch_size: %d", patch_size_);
+  ROS_INFO("cape::depth_cutoff: %f", depth_cutoff_);
 }
 
 void CapeRosNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array,
@@ -137,18 +142,24 @@ void CapeRosNode::organizePointCloudByCell(Eigen::MatrixXf& cloud_in, Eigen::Mat
 
 void CapeRosNode::overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat& seg)
 {
+  overlay_image_.create(height_, width_, CV_8UC3);
+
+  if (plane_params_.empty())
+  {
+    cv::cvtColor(img, overlay_image_, CV_GRAY2BGR);
+    return;
+  }
+
   std::vector<std::array<uint8_t, 3>> colors;
   colors.reserve(plane_params_.size());
 
-  const size_t hue_step = 360 / (plane_params_.size() - 1);
+  const int hue_step = 360 / plane_params_.size();
   const double saturation = 0.9;
   const double value = 0.8;
   for (size_t i = 0; i < plane_params_.size(); ++i)
   {
     colors.emplace_back(hsvToRgb(static_cast<double>(i * hue_step), saturation, value));
   }
-
-  overlay_image_.create(height_, width_, CV_8UC3);
 
   for (int r = 0; r < height_; ++r)
   {
@@ -173,9 +184,9 @@ void CapeRosNode::overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat& seg)
   }
 }
 
-cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& header) const
+cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& header)
 {
-  cape_ros::PlanesPtr planes = boost::make_shared<cape_ros::Planes>();
+  planes_ = boost::make_shared<cape_ros::Planes>();
   for (const PlaneSeg& plane : plane_params_)
   {
     shape_msgs::Plane p;
@@ -183,18 +194,18 @@ cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& he
     p.coef[1] = plane.normal[1];
     p.coef[2] = plane.normal[2];
     p.coef[3] = plane.d;
-    planes->planes.push_back(p);
+    planes_->planes.push_back(p);
 
     geometry_msgs::Point m;
     m.x = plane.mean[0];
     m.y = plane.mean[1];
     m.z = plane.mean[2];
-    planes->means.push_back(m);
+    planes_->means.push_back(m);
 
-    planes->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
+    planes_->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
   }
 
-  return planes;
+  return planes_;
 }
 
 void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
@@ -204,7 +215,7 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
     try
     {
       sensor_msgs::CameraInfoConstPtr cam_intrinsics_info =
-          ros::topic::waitForMessage<sensor_msgs::CameraInfo>("depth/camera_info", ros::Duration(1.0));
+          ros::topic::waitForMessage<sensor_msgs::CameraInfo>("camera_info_in", ros::Duration(1.0));
       if (cam_intrinsics_info)
       {
         if (cam_intrinsics_info->K[0] > 0 && cam_intrinsics_info->K[4] > 0 && cam_intrinsics_info->K[2] > 0 &&
@@ -219,14 +230,14 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
       }
       else
       {
-        ROS_ERROR("Failed to obtain camera intrinsic messages");
+        ROS_ERROR("Cape: Failed to obtain camera intrinsic messages");
         return;
       }
-      ROS_WARN("fx, fy, px, py: %f, %f, %f, %f", fx_, fy_, cx_, cy_);
+      ROS_WARN("Cape: fx, fy, px, py: %f, %f, %f, %f", fx_, fy_, cx_, cy_);
     }
     catch (std::exception e)
     {
-      ROS_ERROR("Failed to obtain camera intrinsic messages: %s", e.what());
+      ROS_ERROR("Cape: Failed to obtain camera intrinsic messages: %s", e.what());
       return;
     }
   }
@@ -263,6 +274,10 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
       ++iter_mat;
     }
   }
+
+  cv::Mat blured;
+  cv::blur(depth_mat_, blured, cv::Size(5, 5));
+  cv::bilateralFilter(blured, depth_mat_, 5, 175, 175);
 
   X_ = X_pre_.mul(depth_mat_);
   Y_ = Y_pre_.mul(depth_mat_);
