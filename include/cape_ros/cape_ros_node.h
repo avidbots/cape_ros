@@ -40,7 +40,7 @@ public:
 
   void depthCallback(const sensor_msgs::ImagePtr& image);
 
-  cape_ros::PlanesConstPtr generateMessage(const std_msgs::Header& header) const;
+  cape_ros::PlanesConstPtr generateMessage(const std_msgs::Header& header);
 
   void reset();
 
@@ -83,6 +83,7 @@ private:
   cv_bridge::CvImageConstPtr intensity_image_ptr_;
 
   std::shared_ptr<Cape> cape_extractor_;
+  cape_ros::PlanesPtr planes_;
 };
 
 #endif // #ifndef CAPE_ROS_CAPE_ROS_NODE_H
