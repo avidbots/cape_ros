@@ -34,7 +34,7 @@ generate_messages(
 
 catkin_package(
     INCLUDE_DIRS include
-    CATKIN_DEPENDS message_runtime roscpp sensor_msgs std_msgs
+    CATKIN_DEPENDS message_runtime roscpp sensor_msgs std_msgs shape_msgs
     nodelet
     cv_bridge
     image_transport
