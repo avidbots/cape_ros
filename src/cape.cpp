@@ -85,7 +85,6 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
   /*------------------------------- Initialize histogram -----------------------------------*/
   // double t3 = cv::getTickCount();
   // Spherical coordinates
-  std::cout << "Total cells " << nr_total_cells << std::endl;
   Eigen::MatrixXd C(nr_total_cells, 2);
   vector<bool> planar_flags(nr_total_cells, false);
   vector<float> scores_stacked(nr_total_cells, 0.0);
