@@ -337,7 +337,10 @@ void CapeRosNode::reset()
 
 void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr& image)
 {
-  intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
+  if (intrinsics_ready_)
+  {
+    intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
+  }
 }
 
 /**
