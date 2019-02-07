@@ -242,7 +242,20 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
     }
   }
 
-  cv_bridge::CvImageConstPtr image_ptr = cv_bridge::toCvShare(image, image->encoding);
+  cv_bridge::CvImageConstPtr image_ptr;
+  try
+  {
+    image_ptr = cv_bridge::toCvShare(image, image->encoding);
+  }
+  catch (const cv::Exception& e)
+  {
+    ROS_ERROR_STREAM("Could not convert depth image. " <<
+                     "Encoding: " << image->encoding <<
+                     " Data size: " << image->data.size() <<
+                     " Opencv Error: " << e.what());
+    return;
+  }
+
   auto image_depth16 = reinterpret_cast<const uint16_t*>(image_ptr->image.data);
   float scaled_depth(0.);
 
@@ -339,7 +352,17 @@ void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr& image)
 {
   if (intrinsics_ready_)
   {
-    intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
+    try
+    {
+      intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
+    }
+    catch (const cv::Exception& e)
+    {
+      ROS_ERROR_STREAM("Could not convert intensity image. " <<
+                       "Encoding: " << image->encoding <<
+                       " Data size: " << image->data.size() <<
+                       " Opencv Error: " << e.what());
+    }
   }
 }
 
