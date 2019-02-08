@@ -382,7 +382,8 @@ void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr& image)
     catch (const cv_bridge::Exception& e)
     {
       ROS_ERROR_STREAM("Could not convert intensity image. " <<
-                       "Encoding: " << image->encoding <<
+                       " Encoding: " << image->encoding <<
+                       " Image size, height: " << image->height << " width: " << image->width <<
                        " Data size: " << image->data.size() <<
                        " Opencv Error: " << e.what());
     }
