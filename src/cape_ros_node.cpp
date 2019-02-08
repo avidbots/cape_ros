@@ -187,6 +187,19 @@ void CapeRosNode::overlaySegmentsOnImage(const cv::Mat& img, const cv::Mat& seg)
 cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& header)
 {
   planes_ = boost::make_shared<cape_ros::Planes>();
+
+  try {
+    planes_->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
+  }
+  catch (const cv::Exception& e)
+  {
+    ROS_ERROR_STREAM("cape:Could not convert seg_output_ to planes_->segments. " <<
+                     "seg_output_.type(): " << seg_output_.type() <<
+                     "planes_->segments.encoding: " << planes_->segments.encoding <<
+                     " Opencv Error: " << e.what());
+    return planes_;
+  }
+
   for (const PlaneSeg& plane : plane_params_)
   {
     shape_msgs::Plane p;
@@ -201,8 +214,6 @@ cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& he
     m.y = plane.mean[1];
     m.z = plane.mean[2];
     planes_->means.push_back(m);
-
-    planes_->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
   }
 
   return planes_;
@@ -310,7 +321,19 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
   if (intensity_image_ptr_ && (image_overlay_pub_.getNumSubscribers() > 0))
   {
     overlaySegmentsOnImage(intensity_image_ptr_->image, seg_output_);
-    image_overlay_pub_.publish(cv_bridge::CvImage(image->header, "rgb8", overlay_image_).toImageMsg());
+    sensor_msgs::ImagePtr image_msg;
+    try {
+      image_msg = cv_bridge::CvImage(image->header, "rgb8", overlay_image_).toImageMsg();
+    }
+    catch (const cv::Exception& e)
+    {
+      ROS_ERROR_STREAM("cape: Could not convert overlay_image_ to senor_msgs::Image. " <<
+                       "overlay_image_.type(): " << overlay_image_.type() <<
+                       "image->encoding: " << image_msg->encoding <<
+                       " Opencv Error: " << e.what());
+      return;
+    }
+    image_overlay_pub_.publish(image_msg);
   }
 }
 
