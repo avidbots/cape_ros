@@ -191,7 +191,7 @@ cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& he
   try {
     planes_->segments = *cv_bridge::CvImage(header, "mono8", seg_output_).toImageMsg();
   }
-  catch (const cv::Exception& e)
+  catch (const cv_bridge::Exception& e)
   {
     ROS_ERROR_STREAM("cape:Could not convert seg_output_ to planes_->segments. " <<
                      "seg_output_.type(): " << seg_output_.type() <<
@@ -258,7 +258,7 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
   {
     image_ptr = cv_bridge::toCvShare(image, image->encoding);
   }
-  catch (const cv::Exception& e)
+  catch (const cv_bridge::Exception& e)
   {
     ROS_ERROR_STREAM("Could not convert depth image. " <<
                      "Encoding: " << image->encoding <<
@@ -325,7 +325,7 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
     try {
       image_msg = cv_bridge::CvImage(image->header, "rgb8", overlay_image_).toImageMsg();
     }
-    catch (const cv::Exception& e)
+    catch (const cv_bridge::Exception& e)
     {
       ROS_ERROR_STREAM("cape: Could not convert overlay_image_ to senor_msgs::Image. " <<
                        "overlay_image_.type(): " << overlay_image_.type() <<
@@ -379,7 +379,7 @@ void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr& image)
     {
       intensity_image_ptr_ = cv_bridge::toCvShare(image, image->encoding);
     }
-    catch (const cv::Exception& e)
+    catch (const cv_bridge::Exception& e)
     {
       ROS_ERROR_STREAM("Could not convert intensity image. " <<
                        "Encoding: " << image->encoding <<
