@@ -262,6 +262,7 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
   {
     ROS_ERROR_STREAM("Could not convert depth image. " <<
                      "Encoding: " << image->encoding <<
+                     " Image size, height: " << image->height << " width: " << image->width <<
                      " Data size: " << image->data.size() <<
                      " Opencv Error: " << e.what());
     return;
