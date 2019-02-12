@@ -85,10 +85,10 @@ CapeRosNode::CapeRosNode(ros::NodeHandle nh)
   nh_.param("patch_size", patch_size_, patch_size_);
   nh_.param("depth_cutoff", depth_cutoff_, depth_cutoff_);
 
-  ROS_INFO("cape::max_angle: %f", max_angle);
-  ROS_INFO("cape::max_merge_dist: %f", max_merge_dist_);
-  ROS_INFO("cape::patch_size: %d", patch_size_);
-  ROS_INFO("cape::depth_cutoff: %f", depth_cutoff_);
+  ROS_INFO("CapeRosNode::max_angle: %f", max_angle);
+  ROS_INFO("CapeRosNode::max_merge_dist: %f", max_merge_dist_);
+  ROS_INFO("CapeRosNode::patch_size: %d", patch_size_);
+  ROS_INFO("CapeRosNode::depth_cutoff: %f", depth_cutoff_);
 }
 
 void CapeRosNode::simpleProjectPointCloud(cv::Mat& X, cv::Mat& Y, cv::Mat& Z, Eigen::MatrixXf& cloud_array,
@@ -193,9 +193,9 @@ cape_ros::PlanesConstPtr CapeRosNode::generateMessage(const std_msgs::Header& he
   }
   catch (const cv_bridge::Exception& e)
   {
-    ROS_ERROR_STREAM("cape:Could not convert seg_output_ to planes_->segments. " <<
-                     "seg_output_.type(): " << seg_output_.type() <<
-                     "planes_->segments.encoding: " << planes_->segments.encoding <<
+    ROS_ERROR_STREAM("CapeRosNode::generateMessage: Could not convert seg_output_ to planes_->segments. " <<
+                     " seg_output_.type(): " << seg_output_.type() <<
+                     " planes_->segments.encoding: " << planes_->segments.encoding <<
                      " Opencv Error: " << e.what());
     return planes_;
   }
@@ -241,14 +241,14 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
       }
       else
       {
-        ROS_ERROR("Cape: Failed to obtain camera intrinsic messages");
+        ROS_ERROR("CapeRosNode::depthCallback: Failed to obtain camera intrinsic messages");
         return;
       }
-      ROS_WARN("Cape: fx, fy, px, py: %f, %f, %f, %f", fx_, fy_, cx_, cy_);
+      ROS_WARN("CapeRosNode::depthCallback: fx, fy, px, py: %f, %f, %f, %f", fx_, fy_, cx_, cy_);
     }
     catch (std::exception e)
     {
-      ROS_ERROR("Cape: Failed to obtain camera intrinsic messages: %s", e.what());
+      ROS_ERROR("CapeRosNode::depthCallback: Failed to obtain camera intrinsic messages: %s", e.what());
       return;
     }
   }
@@ -260,8 +260,8 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
   }
   catch (const cv_bridge::Exception& e)
   {
-    ROS_ERROR_STREAM("Could not convert depth image. " <<
-                     "Encoding: " << image->encoding <<
+    ROS_ERROR_STREAM("CapeRosNode::depthCallback: Could not convert depth image. " <<
+                     " Encoding: " << image->encoding <<
                      " Image size, height: " << image->height << " width: " << image->width << " step: " << image->step <<
                      " Data size: " << image->data.size() <<
                      " Opencv Error: " << e.what());
@@ -328,9 +328,9 @@ void CapeRosNode::depthCallback(const sensor_msgs::ImagePtr& image)
     }
     catch (const cv_bridge::Exception& e)
     {
-      ROS_ERROR_STREAM("cape: Could not convert overlay_image_ to senor_msgs::Image. " <<
-                       "overlay_image_.type(): " << overlay_image_.type() <<
-                       "image->encoding: " << image_msg->encoding <<
+      ROS_ERROR_STREAM("CapeRosNode::depthCallback: Could not convert overlay_image_ to senor_msgs::Image. " <<
+                       " overlay_image_.type(): " << overlay_image_.type() <<
+                       " image->encoding: " << image_msg->encoding <<
                        " Opencv Error: " << e.what());
       return;
     }
@@ -382,7 +382,7 @@ void CapeRosNode::intensityCallback(const sensor_msgs::ImagePtr& image)
     }
     catch (const cv_bridge::Exception& e)
     {
-      ROS_ERROR_STREAM("Could not convert intensity image. " <<
+      ROS_ERROR_STREAM("CapeRosNode::intensityCallback: Could not convert intensity image. " <<
                        " Encoding: " << image->encoding <<
                        " Image size, height: " << image->height << " width: " << image->width <<
                        " Data size: " << image->data.size() <<
