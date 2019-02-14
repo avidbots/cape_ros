@@ -48,8 +48,6 @@ Cape::Cape(int depth_height, int depth_width, int cell_width, int cell_height, b
 
 void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
                    std::vector<PlaneSeg>& plane_segments_final, std::vector<CylinderSeg>& cylinder_segments_final) {
-
-  std::cout << " depth_width " << depth_width << " " << depth_height << " " << cell_width <<" " << cell_height << std::endl;
   int nr_horizontal_cells = depth_width / cell_width;
   int nr_vertical_cells = depth_height / cell_height;
   int nr_total_cells = nr_vertical_cells * nr_horizontal_cells;
@@ -68,6 +66,7 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
   int stacked_cell_id = 0;
   float cell_diameter;
   float sin_cos_angle_4_merge = sqrt(1 - pow(min_cos_angle_4_merge, 2));
+
   for (int cell_r = 0; cell_r < nr_vertical_cells; cell_r++) {
     for (int cell_c = 0; cell_c < nr_horizontal_cells; cell_c++) {
       Grid[stacked_cell_id] = new PlaneSeg(cloud_array, stacked_cell_id, nr_pts_per_cell, cell_width);
@@ -82,10 +81,10 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
       stacked_cell_id++;
     }
   }
+
   /*------------------------------- Initialize histogram -----------------------------------*/
   // double t3 = cv::getTickCount();
   // Spherical coordinates
-  std::cout << "Total cells " << nr_total_cells << std::endl;
   Eigen::MatrixXd C(nr_total_cells, 2);
   vector<bool> planar_flags(nr_total_cells, false);
   vector<float> scores_stacked(nr_total_cells, 0.0);
@@ -165,7 +164,7 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
     new_ps.fitPlane();
 
     // 4. Model fitting
-    if (new_ps.score > 100) {
+    if (new_ps.score > 1) {
       // It is a plane
       plane_segments.push_back(new_ps);
       int nr_curr_planes = plane_segments.size();
@@ -273,10 +272,12 @@ void Cape::process(Eigen::MatrixXf& cloud_array, cv::Mat& seg_out,
     double min, max;
     cv::minMaxLoc(mask_eroded, &min, &max);
 
-    // If completely eroded ignore plane
-    if (max == 0) {
-      continue;
+    int patch_cnt(0);
+    for (auto cell = mask.begin<uchar>(); cell != mask.end<uchar>(); ++cell) {
+      if (*cell > 0) patch_cnt++;
     }
+    if (patch_cnt < 3) continue;
+
 
     plane_segments_final.push_back(plane_segments[i]);
 
@@ -497,11 +498,15 @@ void Cape::RegionGrowing(unsigned short width, unsigned short height, bool* inpu
     return;
   output[index] = true;
 
-  // Now label the 4 neighbours:
-  if (x > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x - 1, y, normal_2, d_2);           // left  pixel
-  if (x < width - 1) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x + 1, y, normal_2, d_2);   // right pixel
-  if (y > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x, y - 1, normal_2, d_2);           // upper pixel
+  // Now label the 8 neighbours:
+  if (x > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x - 1, y, normal_2, d_2);  // left  pixel
+  if (x > 0 && y > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x - 1, y - 1, normal_2, d_2);  // left-upper
+  if (y > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x, y - 1, normal_2, d_2);  // upper pixel
+  if (x < width - 1 && y > 0) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x + 1, y - 1, normal_2, d_2);  // right-upper
+  if (x < width - 1) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x + 1, y, normal_2, d_2);  // right pixel
+  if (x < width - 1 && y < height - 1) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x + 1, y + 1, normal_2, d_2);  // right-lower
   if (y < height - 1) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x, y + 1, normal_2, d_2);  // lower pixel
+  if (x > 0 && y < height - 1) RegionGrowing(width, height, input, output, Grid, cell_dist_tols, x - 1, y + 1, normal_2, d_2);  // left-lower
 }
 
 Cape::~Cape(void) { Grid.clear(); }
